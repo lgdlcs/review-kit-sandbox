@@ -11,6 +11,15 @@ description: Shepherd the current change to done — open the PR with a risk lab
 2. On `main`? Create a branch `<type>/<short-name>` first. Never push to `main`.
 3. Push, then `gh pr create --fill-first --body-file <drafted body> --label risk:<level>`.
 
+### Stack (split work)
+
+When `/pre-pr` split the work, ship it as a stack:
+- Branch `stack/<name>/1-<step>`, `stack/<name>/2-<step>`, and so on. Each one is branched from the previous one.
+- PR 1 targets `main`. PR n targets PR n-1's branch, so each diff shows only its own step.
+- Title prefix `[n/N]`. The body links the previous and next PRs.
+- Ship bottom-up. When PR n merges (squash), rebase PR n+1 onto `main` (`git rebase --onto main <old-base> <branch>`), run `gh pr edit <n+1> --base main`, force-push the branch (`--force-with-lease`), then wait again.
+- Never merge PR n+1 before PR n. If PR n gets changes, rebase the branches above it.
+
 ## 2. Wait
 
 Checks: `gh pr checks <n>`. Reviews: `gh pr view <n> --comments` and `gh api repos/{owner}/{repo}/pulls/<n>/comments`.
@@ -38,7 +47,7 @@ Re-wait after each push.
 ## 4. Finish
 
 - low / medium → `gh pr merge <n> --squash --delete-branch` once the table above is satisfied.
-- high → never merge. Comment a summary (what, flag name, rollback plan) and stop: "Parked, waiting for `ship-it`."
+- high or `large-ok` → never merge. Comment a summary (what, flag name, rollback plan) and stop: "Parked, waiting for `ship-it`."
 - If the human added `ship-it`, merge with `--squash`.
 
 Then run `/file-friction`. Report: PR URL, findings fixed / declined, merged or parked.

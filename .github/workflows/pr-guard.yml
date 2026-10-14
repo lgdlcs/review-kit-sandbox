@@ -5,31 +5,51 @@ on:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
 
 permissions:
+  contents: read
   pull-requests: read
 
 jobs:
   pr-guard:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
       - name: Risk label, size, ship-it
         env:
+          GH_TOKEN: ${{ github.token }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-          ADDITIONS: ${{ github.event.pull_request.additions }}
-          DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           fail=0
+          has() { jq -e --arg l "$1" 'index($l)' <<<"$LABELS" >/dev/null; }
+
           risks=$(jq -r '[.[] | select(startswith("risk:"))] | join(" ")' <<<"$LABELS")
-          count=$(wc -w <<<"$risks")
-          if [ "$count" -ne 1 ]; then
+          if [ "$(wc -w <<<"$risks")" -ne 1 ]; then
             echo "::error::Exactly one risk label required (risk:low, risk:medium, risk:high). Found: '${risks}'"; fail=1
           fi
-          size=$((ADDITIONS + DELETIONS))
-          if [ "$size" -gt 1000 ] && ! jq -e 'index("large-ok")' <<<"$LABELS" >/dev/null; then
-            echo "::error::$size changed lines. Split the PR, or add the large-ok label if it is generated code."; fail=1
+
+          size=0; skipped=0
+          while IFS=$'\t' read -r file lines; do
+            case "$(basename "$file")" in
+              package-lock.json|npm-shrinkwrap.json|pnpm-lock.yaml|yarn.lock|bun.lock|bun.lockb|Cargo.lock|poetry.lock|uv.lock|Gemfile.lock|composer.lock|go.sum)
+                skipped=$((skipped + lines)); continue ;;
+            esac
+            if git check-attr linguist-generated -- "$file" | grep -qE ': (set|true)$'; then
+              skipped=$((skipped + lines)); continue
+            fi
+            size=$((size + lines))
+          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | [.filename, (.additions + .deletions)] | @tsv')
+          echo "Reviewable lines: $size (skipped $skipped lockfile/generated lines; generated = linguist-generated in the base branch .gitattributes)"
+
+          if [ "$size" -gt 1000 ] && ! has large-ok; then
+            echo "::error::$size reviewable lines. Split into stacked PRs behind a flag (see /ship-pr), or add large-ok to park it for human review."; fail=1
           elif [ "$size" -gt 400 ]; then
-            echo "::warning::$size changed lines. Reviews get worse past ~400."
+            echo "::warning::$size reviewable lines. Reviews get worse past ~400."
           fi
-          if [ "$risks" = "risk:high" ] && ! jq -e 'index("ship-it")' <<<"$LABELS" >/dev/null; then
-            echo "::error::risk:high is parked until a human adds the ship-it label."; fail=1
+
+          if { [ "$risks" = "risk:high" ] || has large-ok; } && ! has ship-it; then
+            echo "::error::Parked until a human adds the ship-it label (risk:high or large-ok)."; fail=1
           fi
           exit $fail

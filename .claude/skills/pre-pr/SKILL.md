@@ -9,7 +9,18 @@ Scope: `git diff main...HEAD` plus the working tree. If the diff is empty, stop 
 
 ## 1. Size
 
-Count changed lines (`git diff --stat main...HEAD`). Above 400, propose a split into independent PRs (each one shippable on its own) and stop until the user picks.
+Count reviewable lines: `git diff --numstat main...HEAD`, minus lockfiles and paths marked `linguist-generated` in `.gitattributes`. If generated code is not marked yet, mark it in a separate first PR.
+
+Above 400, propose a split and stop until the user picks. A big feature does not need to ship at once, only to switch on at once. Cut it into a stack where each PR is shippable alone and inert in production:
+1. Preparatory refactor, no behavior change.
+2. Additive schema change (new column/table, unused).
+3. New logic behind `FLAG_<NAME>`, off by default.
+4. UI behind the same flag.
+5. After it runs in production: turn the flag on (env change, no PR). Later, remove the flag and the old path.
+
+Show the proposed stack as a table: PR, content, risk, approximate lines, effect in prod.
+
+Keep a single large PR only when the size is mechanical (codemod, rename, vendored code) or truly indivisible. It then gets `large-ok`, and that parks it for the human like `risk:high`.
 
 ## 2. Bugs
 
