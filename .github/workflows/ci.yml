@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Detect project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            if [ -f bun.lockb ] || [ -f bun.lock ]; then pm=bun
+            elif [ -f pnpm-lock.yaml ]; then pm=pnpm
+            elif [ -f yarn.lock ]; then pm=yarn
+            else pm=npm; fi
+            echo "pm=$pm" >> "$GITHUB_OUTPUT"
+            jq -e '.packageManager' package.json >/dev/null || echo "pnpm_version=10" >> "$GITHUB_OUTPUT"
+            echo "scripts=$(jq -r '.scripts // {} | keys | join(" ")' package.json)" >> "$GITHUB_OUTPUT"
+          elif [ -f Makefile ] && grep -q '^test:' Makefile; then
+            echo "pm=make" >> "$GITHUB_OUTPUT"
+          else
+            echo "pm=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.detect.outputs.pm == 'pnpm'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.detect.outputs.pnpm_version }}
+      - if: steps.detect.outputs.pm == 'bun'
+        uses: oven-sh/setup-bun@v2
+      - if: contains(fromJSON('["npm","pnpm","yarn"]'), steps.detect.outputs.pm)
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+          node-version: ${{ hashFiles('.nvmrc') == '' && 'lts/*' || '' }}
+          cache: ${{ steps.detect.outputs.pm }}
+
+      - name: Install
+        if: contains(fromJSON('["npm","pnpm","yarn","bun"]'), steps.detect.outputs.pm)
+        run: |
+          case ${{ steps.detect.outputs.pm }} in
+            npm) npm ci ;;
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --frozen-lockfile ;;
+            bun) bun install --frozen-lockfile ;;
+          esac
+
+      - name: Lint, typecheck, test, build
+        if: contains(fromJSON('["npm","pnpm","yarn","bun"]'), steps.detect.outputs.pm)
+        run: |
+          ran=0
+          for s in lint typecheck test build; do
+            if [[ " ${{ steps.detect.outputs.scripts }} " == *" $s "* ]]; then
+              echo "::group::$s"; ${{ steps.detect.outputs.pm }} run "$s"; echo "::endgroup::"; ran=1
+            fi
+          done
+          [ $ran = 1 ] || echo "::warning::No lint/typecheck/test/build script in package.json. CI checks nothing."
+
+      - if: steps.detect.outputs.pm == 'make'
+        run: make test
+
+      - if: steps.detect.outputs.pm == 'none'
+        run: echo "::warning::No package.json or Makefile test target. Add one so CI checks something."

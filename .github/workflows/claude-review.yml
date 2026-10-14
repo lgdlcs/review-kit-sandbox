@@ -1,0 +1,54 @@
+name: claude-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR: #${{ github.event.pull_request.number }}
+            BASE: ${{ github.event.pull_request.base.ref }}
+            LABELS: ${{ join(github.event.pull_request.labels.*.name, ', ') }}
+
+            You review this PR to keep bugs out of production. Read CLAUDE.md first if it exists.
+            Read the diff with `gh pr diff`, then read the surrounding code. Only report what you can point to with file:line.
+
+            Look for, in this order:
+            1. Correctness bugs: wrong logic, unhandled null/error paths, races, off-by-one, broken contracts with callers.
+            2. Blast radius: what outside the diff breaks. Callers, JSON shapes, DB columns, env vars, routes, flags, cron, other services. Name the one fact the change is safe because of, and say whether the PR proves it.
+            3. Workaround comments: comments that explain a hack, a temporary fix, or "do not touch" about our own code. Ask for the root-cause fix. Comments about things we cannot change (browser quirk, third-party bug with link) are fine.
+            4. Risk label: does it match the diff? risk:high is required for auth, payments, data/migrations, secrets, CI/deploy, or one-way doors. Flag an under-labelled PR.
+            5. risk:high only: is there a flag and a rollback plan in the PR body?
+
+            Do not comment on style, naming or formatting a linter could catch. No praise. Fewer, real findings beat many maybes.
+
+            Post each finding as an inline comment with a severity prefix: [blocking] or [nit].
+            Then post one summary comment:
+            **Verdict:** OK | BLOCKING
+            **Risk label:** <label> — correct | should be <label>
+            **Blast radius:** <2-3 lines, with the safety fact and proven/unproven>
+            **Findings:** <count blocking> blocking, <count nits> nits
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"

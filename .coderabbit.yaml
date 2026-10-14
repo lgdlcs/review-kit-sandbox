@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  sequence_diagrams: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: [main]
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Flag comments that explain a workaround, a temporary fix, or "do not touch" about our own code; ask for the root-cause fix instead.
+        Check that the risk:* label matches the change (risk:high for auth, payments, data/migrations, secrets, CI/deploy, one-way doors).
+        Skip style and formatting nits a linter would catch.
+    - path: "**/{auth,session,login,payment,payments,billing,stripe,webhook,webhooks}/**"
+      instructions: Security- and money-critical. Check authorization on every path, idempotency of webhooks, and secret handling.
+    - path: "**/{migrations,migration,db,schema,prisma,drizzle,supabase}/**"
+      instructions: Migrations must be additive (expand/contract). Flag any drop, rename or destructive change shipped together with the code that stops using it.
+    - path: ".github/**"
+      instructions: CI/deploy change. Flag weakened checks, skipped tests, broadened permissions or secrets exposed to forks.
+chat:
+  auto_reply: true

@@ -1,0 +1,35 @@
+name: pr-guard
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Risk label, size, ship-it
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+        run: |
+          fail=0
+          risks=$(jq -r '[.[] | select(startswith("risk:"))] | join(" ")' <<<"$LABELS")
+          count=$(wc -w <<<"$risks")
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Exactly one risk label required (risk:low, risk:medium, risk:high). Found: '${risks}'"; fail=1
+          fi
+          size=$((ADDITIONS + DELETIONS))
+          if [ "$size" -gt 1000 ] && ! jq -e 'index("large-ok")' <<<"$LABELS" >/dev/null; then
+            echo "::error::$size changed lines. Split the PR, or add the large-ok label if it is generated code."; fail=1
+          elif [ "$size" -gt 400 ]; then
+            echo "::warning::$size changed lines. Reviews get worse past ~400."
+          fi
+          if [ "$risks" = "risk:high" ] && ! jq -e 'index("ship-it")' <<<"$LABELS" >/dev/null; then
+            echo "::error::risk:high is parked until a human adds the ship-it label."; fail=1
+          fi
+          exit $fail
