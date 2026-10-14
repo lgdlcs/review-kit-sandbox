@@ -27,6 +27,11 @@ jobs:
             elif [ -f yarn.lock ]; then pm=yarn
             else pm=npm; fi
             echo "pm=$pm" >> "$GITHUB_OUTPUT"
+            if ls package-lock.json npm-shrinkwrap.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb >/dev/null 2>&1; then
+              echo "lock=1" >> "$GITHUB_OUTPUT"
+            else
+              echo "::warning::No lockfile committed: installs are not reproducible."
+            fi
             jq -e '.packageManager' package.json >/dev/null || echo "pnpm_version=10" >> "$GITHUB_OUTPUT"
             echo "scripts=$(jq -r '.scripts // {} | keys | join(" ")' package.json)" >> "$GITHUB_OUTPUT"
           elif [ -f Makefile ] && grep -q '^test:' Makefile; then
@@ -46,16 +51,17 @@ jobs:
         with:
           node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
           node-version: ${{ hashFiles('.nvmrc') == '' && 'lts/*' || '' }}
-          cache: ${{ steps.detect.outputs.pm }}
+          cache: ${{ steps.detect.outputs.lock == '1' && steps.detect.outputs.pm || '' }}
 
       - name: Install
         if: contains(fromJSON('["npm","pnpm","yarn","bun"]'), steps.detect.outputs.pm)
         run: |
+          frozen=${{ steps.detect.outputs.lock == '1' }}
           case ${{ steps.detect.outputs.pm }} in
-            npm) npm ci ;;
-            pnpm) pnpm install --frozen-lockfile ;;
-            yarn) yarn install --frozen-lockfile ;;
-            bun) bun install --frozen-lockfile ;;
+            npm) if $frozen; then npm ci; else npm install; fi ;;
+            pnpm) pnpm install ${{ steps.detect.outputs.lock == '1' && '--frozen-lockfile' || '' }} ;;
+            yarn) yarn install ${{ steps.detect.outputs.lock == '1' && '--frozen-lockfile' || '' }} ;;
+            bun) bun install ${{ steps.detect.outputs.lock == '1' && '--frozen-lockfile' || '' }} ;;
           esac
 
       - name: Lint, typecheck, test, build
