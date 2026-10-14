@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Panier</title>
+  <link rel="stylesheet" href="promo.css">
+</head>
+<body>
+  <main>
+    <h1>Panier</h1>
+    <ul id="items"></ul>
+    <form id="promo" hidden>
+      <label for="code">Code promo</label>
+      <input id="code" name="code" autocomplete="off">
+      <button>Appliquer</button>
+      <p id="promo-error" role="alert"></p>
+    </form>
+    <p>Total : <strong id="total"></strong></p>
+  </main>
+  <script type="module" src="promo-ui.js"></script>
+</body>
+</html>
