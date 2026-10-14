@@ -8,6 +8,7 @@
   - `risk:medium` — behavior change in app logic, new dependency, refactor across files.
   - `risk:high` — auth, payments, data/migrations, secrets, infra/CI/deploy, or any one-way door.
 - `risk:high` ships behind a flag (`FLAG_<NAME>` env var, off by default) and with a rollback plan. Only the human adds the `ship-it` label.
+- Too big? Split into a stack of PRs, each inert in production behind a flag (`/pre-pr` proposes it). `large-ok` is for mechanical changes only, and it parks the PR like `risk:high`. Mark generated files `linguist-generated` in `.gitattributes`.
 - Migrations are additive (expand → migrate → contract in separate PRs).
 
 ## No workaround comments
