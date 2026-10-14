@@ -16,6 +16,8 @@ description: Shepherd the current change to done — open the PR with a risk lab
 Checks: `gh pr checks <n>`. Reviews: `gh pr view <n> --comments` and `gh api repos/{owner}/{repo}/pulls/<n>/comments`.
 Do not tight-loop. Use `ScheduleWakeup` (~240s) or a `Monitor` on `gh pr checks <n> --watch`, then re-check.
 
+If CodeRabbit's comment says the review was skipped (small public repo, plan limit), post `gh pr comment <n> --body "@coderabbitai review"` once.
+
 Reviewers by risk:
 
 | risk   | needs before merge |

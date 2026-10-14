@@ -27,11 +27,12 @@ jobs:
             elif [ -f yarn.lock ]; then pm=yarn
             else pm=npm; fi
             echo "pm=$pm" >> "$GITHUB_OUTPUT"
-            if ls package-lock.json npm-shrinkwrap.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb >/dev/null 2>&1; then
-              echo "lock=1" >> "$GITHUB_OUTPUT"
-            else
-              echo "::warning::No lockfile committed: installs are not reproducible."
-            fi
+            lock=0
+            for f in package-lock.json npm-shrinkwrap.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb; do
+              [ -f "$f" ] && lock=1
+            done
+            echo "lock=$lock" >> "$GITHUB_OUTPUT"
+            [ $lock = 1 ] || echo "::warning::No lockfile committed: installs are not reproducible."
             jq -e '.packageManager' package.json >/dev/null || echo "pnpm_version=10" >> "$GITHUB_OUTPUT"
             echo "scripts=$(jq -r '.scripts // {} | keys | join(" ")' package.json)" >> "$GITHUB_OUTPUT"
           elif [ -f Makefile ] && grep -q '^test:' Makefile; then
